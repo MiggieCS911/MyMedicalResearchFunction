@@ -1,5 +1,6 @@
 """
 These are function for medical research. 
+Base on Python for
 - EDA
 - Check outlier and null value
 - Describe baseline characteristics
