@@ -1,0 +1,137 @@
+"""
+These are function for medical research. 
+- EDA
+- Check outlier and null value
+- Describe baseline characteristics
+The requirement: Pandas, Scipy, Numpy, Matplotlib, Statemodels
+"""
+
+def continuos_outlier_checker(dataframe, listvar, bin):
+  """
+  for checking outlier of continuous data
+  dataframe: pandas dataframe, listvar: list of variable name, bin: histogram bin
+  """
+  for v in listvar:
+    print('--', v, '--')
+    dataframe[v].hist(bins=bin)
+    plt.show()
+    print(f'minimum value is {dataframe[v].min()}')
+    print(f'maximum value is {dataframe[v].max()}')
+    print(f'mean = {dataframe[v].mean()}, SD = {dataframe[v].std()} ')
+    print(f'median = {dataframe[v].median()}, IQR = {dataframe[v].quantile(0.75) - dataframe[v].quantile(0.25)}')
+    print('='*40)
+
+def categorical_outlier_checker(dataframe, listvar):
+  """
+  check outlier of categorical data by count value
+  """
+  for v in listvar:
+    print('--', v, '--')
+    print(dataframe[v].value_counts())
+    print('='*40)
+
+
+def describeCatdata(dataframe, listvariable, target): 
+  """Explore categorical data by 2x2 table and chi-square test
+  dataframe: pandas dataframe; listvariable: list of column name; target: labels (binary group) """
+
+  for variable in listvariable:
+    print('-',variable,'-')
+    tab = pd.crosstab(dataframe[variable], dataframe[target])#pd dataframe
+    percenttab = tab.apply(lambda x: x*100/x.sum(), axis = 0)
+    table = sm.stats.Table(tab)#แปลงเพื่อเข้า chisquare ได้
+    rslt = table.test_nominal_association()
+    print('--N--')
+    print(tab)
+    print('--Percent--')
+    print(percenttab)
+    print('Chi-square test: ', rslt.pvalue)
+    print('--'*40)
+    print('\n')
+
+#Explore continuous data
+
+def describeContData(dataframe, variable, bins, target):
+  """Explore by test distribution, plot histogram, mean/median, stat-test
+  """
+
+  print('-',variable,'-')
+  #histogram
+  dataframe[variable].dropna().hist(bins = bins, alpha = 0.8, label = 'All')
+  dataframe.loc[dataframe[target] == 0,variable].dropna().hist(bins = bins, alpha = 0.8, label = 'no-'+target)
+  dataframe.loc[dataframe[target] == 1,variable].dropna().hist(bins = bins, alpha = 0.8, label = target)
+  plt.title(variable)
+  plt.legend()
+  plt.show()
+
+  #statistic value
+  #test normal distribution --> Shapiro test
+  shapiro_stat, shapiro_pvalue = stats.shapiro(dataframe[variable].dropna(axis=0))
+  shapiro_stat_0, shapiro_pvalue_0 = stats.shapiro(dataframe[dataframe[target]==0][variable].dropna(axis=0))
+  shapiro_stat_1, shapiro_pvalue_1 = stats.shapiro(dataframe[dataframe[target]==1][variable].dropna(axis=0))
+  print('p-value of Shapiro test: ', shapiro_pvalue)
+  if shapiro_pvalue < 0.05:
+    print('This attribute is non-normal distribution')
+  else:
+    print('This attribute is normal distribution')
+  
+  print('p-value of Shapiro test of no-'+target+' : ', shapiro_pvalue_0)
+  if shapiro_pvalue_0 < 0.05:
+    print('This attribute is non-normal distribution')
+  else:
+    print('This attribute is normal distribution')
+
+  print('p-value of Shapiro test of '+target+' : ', shapiro_pvalue_1)
+  if shapiro_pvalue_1 < 0.05:
+    print('This attribute is non-normal distribution')
+  else:
+    print('This attribute is normal distribution')
+  print('--'*40)
+  
+  #Show mean/ median depend on distribution
+  #normal distribution mean/ sd/ student t-test
+  non_target_data = dataframe.loc[dataframe[target]==0,variable].dropna(axis=0)
+  target_data = dataframe.loc[dataframe[target]==1,variable].dropna(axis=0)
+  if (shapiro_pvalue > 0.05) & (shapiro_pvalue_0 > 0.05) & (shapiro_pvalue_1 > 0.05):
+    total = statsmodels.stats.weightstats.DescrStatsW(dataframe[variable].dropna(axis=0))
+    non_target_st = statsmodels.stats.weightstats.DescrStatsW(non_target_data)
+    target_st = statsmodels.stats.weightstats.DescrStatsW(target_data)
+
+    compare_mean = statsmodels.stats.weightstats.CompareMeans(non_target_st,target_st)
+    print('Normal Distribution')
+    print(f'total: mean = {total.mean}, std = {total.std}')
+    print(f'non-{target} : mean =  {non_target_st.mean}, std = {non_target_st.std}')
+    print(f'{target} : mean = {target_st.mean}, std = {target_st.std}')
+    print(compare_mean.summary())
+    print('--'*40)
+    print('\n')
+  else:
+
+    compare_mannwu = stats.mannwhitneyu(non_target_data,target_data)
+    print('Skrew Distribution')
+    print('total')
+    print(dataframe[variable].quantile([0.25,0.5,0.75]))
+    print('no-'+target)
+    print(non_target_data.quantile([0.25,0.5,0.75]))
+    print(target)
+    print(target_data.quantile([0.25,0.5,0.75]))
+    print(compare_mannwu)
+    print('--'*40)
+    print('\n')
+
+# function calculate Odds ratio
+def calodds(x):
+  odds = np.exp(x)
+  return odds
+
+#for compare likelihood ratio between model 
+
+stats.chisqprob = lambda chisq, df: stats.chi2.sf(chisq, df)
+
+def lrtest(llmin, llmax): #llmax -> more dimension
+  """
+  test 2 models: difference instatistical by log-likelyhood ratio
+  """
+  lr = 2 * (llmax - llmin)
+  p = stats.chisqprob(lr, 1) # llmax has 1 d of more than llmin
+  return lr, p
