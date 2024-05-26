@@ -1,0 +1,82 @@
+import pandas as pd
+import statsmodels.api as sm
+import scipy.stats as stats
+import statsmodels.stats.weightstats as smw
+
+# Install xlsxwriter if not already installed
+!pip install xlsxwriter
+
+def describeCatdata_toDataFrame(dataframe, listvariable, target):
+    """Explore categorical data by 2x2 table and chi-square test
+    dataframe: pandas dataframe; listvariable: list of column names; target: labels (binary group) """
+    
+    cat_results = []
+    for variable in listvariable:
+        tab = pd.crosstab(dataframe[variable], dataframe[target])
+        table = sm.stats.Table(tab)
+        rslt = table.test_nominal_association()
+        
+        total = dataframe[variable].value_counts()
+        total_percent = dataframe[variable].value_counts(normalize=True) * 100
+        target_group = dataframe[dataframe[target] == 1][variable].value_counts()
+        target_percent = dataframe[dataframe[target] == 1][variable].value_counts(normalize=True) * 100
+        non_target_group = dataframe[dataframe[target] == 0][variable].value_counts()
+        non_target_percent = dataframe[dataframe[target] == 0][variable].value_counts(normalize=True) * 100
+        
+        for value in total.index:
+            cat_results.append({
+                "Variable": f"{variable} = {value}",
+                "Total Group": f"{total[value]} ({total_percent[value]:.2f}%)",
+                "Group 0": f"{non_target_group.get(value, 0)} ({non_target_percent.get(value, 0):.2f}%)",
+                "Group 1": f"{target_group.get(value, 0)} ({target_percent.get(value, 0):.2f}%)",
+                "p-value": rslt.pvalue
+            })
+        
+    return pd.DataFrame(cat_results)
+
+def describeContData_toDataFrame(dataframe, listvariable, bins, target):
+    """Explore by test distribution, plot histogram, mean/median, stat-test for a list of variables"""
+    
+    cont_results = []
+    
+    for variable in listvariable:
+        shapiro_stat, shapiro_pvalue = stats.shapiro(dataframe[variable].dropna(axis=0))
+        shapiro_stat_0, shapiro_pvalue_0 = stats.shapiro(dataframe[dataframe[target] == 0][variable].dropna(axis=0))
+        shapiro_stat_1, shapiro_pvalue_1 = stats.shapiro(dataframe[dataframe[target] == 1][variable].dropna(axis=0))
+
+        non_target_data = dataframe.loc[dataframe[target] == 0, variable].dropna(axis=0)
+        target_data = dataframe.loc[dataframe[target] == 1, variable].dropna(axis=0)
+
+        if (shapiro_pvalue > 0.05) & (shapiro_pvalue_0 > 0.05) & (shapiro_pvalue_1 > 0.05):
+            total = smw.DescrStatsW(dataframe[variable].dropna(axis=0))
+            non_target_st = smw.DescrStatsW(non_target_data)
+            target_st = smw.DescrStatsW(target_data)
+
+            compare_mean = smw.CompareMeans(non_target_st, target_st)
+            p_value = compare_mean.ttest_ind()[1]
+            
+            cont_results.append({
+                "Variable": variable,
+                "Total Group": f"{total.mean:.2f} ± {total.std:.2f}",
+                "Group 0": f"{non_target_st.mean:.2f} ± {non_target_st.std:.2f}",
+                "Group 1": f"{target_st.mean:.2f} ± {target_st.std:.2f}",
+                "p-value": p_value
+            })
+        else:
+            compare_mannwu = stats.mannwhitneyu(non_target_data, target_data)
+            median_total = dataframe[variable].median()
+            q1_total, q3_total = dataframe[variable].quantile([0.25, 0.75])
+            median_target = target_data.median()
+            q1_target, q3_target = target_data.quantile([0.25, 0.75])
+            median_non_target = non_target_data.median()
+            q1_non_target, q3_non_target = non_target_data.quantile([0.25, 0.75])
+            
+            cont_results.append({
+                "Variable": variable,
+                "Total Group": f"{median_total:.2f} ({q1_total:.2f}, {q3_total:.2f})",
+                "Group 0": f"{median_non_target:.2f} ({q1_non_target:.2f}, {q3_non_target:.2f})",
+                "Group 1": f"{median_target:.2f} ({q1_target:.2f}, {q3_target:.2f})",
+                "p-value": compare_mannwu.pvalue
+            })
+
+    return pd.DataFrame(cont_results)
